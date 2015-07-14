@@ -1,9 +1,20 @@
-import os, sys, string, time, subprocess, signal
+import os, sys, time, subprocess, signal
+import string
+import argparse
+
 sys.path.append('../bluepy/bluepy/')
 from btle import UUID, Peripheral, DefaultDelegate
 
 lescan_timeout = 5
 procs = []
+
+def sigint_handler(sig, frame):
+    for proc in procs:
+        proc.send_signal(signal.SIGCONT)
+        proc.send_signal(signal.SIGINT)
+    print('\n')
+    sys.exit(0)
+signal.signal(signal.SIGINT, sigint_handler)
 
 def main(argv):
     # check if root
