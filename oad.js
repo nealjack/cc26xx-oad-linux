@@ -11,6 +11,7 @@ var OAD_BUFFER_SIZE = 2 + OAD_BLOCK_SIZE;
 console.dir(argv);
 
 var target_uuid = null;
+var scan_timeout = null;
 var target_device = null;
 var discovered = new Array();
 
@@ -35,28 +36,37 @@ else if(argv.b)
   console.log(target_uuid);
 }
 
-fs.readFile(argv.f, function (err, data) {
-  if (err) throw err;
-  console.log(data.length);
-});
+init();
 
-// noble init, device discover
-noble.on('stateChange', function (state) {
-    console.log("Starting scan...");
-    if (state === 'poweredOn') {
-      noble.startScanning([], false);
-    }
-    else {
-      noble.stopScanning();
-    }
-});
-noble.on('discover', discover_device);
+function init(){
+  fs.readFile(argv.f, function (err, data) {
+    if (err) throw err;
+    console.log(data.length);
+    noble.on('discover', discover_device);
+  });
+
+  // noble init, device discover
+  noble.on('stateChange', function (state) {
+      console.log("Starting scan...");
+      if (state === 'poweredOn') {
+        noble.startScanning([], false);
+        scan_timeout = setTimeout(function(){
+          console.log('Scanning timed out, ensure peripheral is advertising.');
+          process.exit();
+        }, 10000);
+      }
+      else {
+        noble.stopScanning();
+      }
+  });
+}
 
 function discover_device(peripheral)
 {
   console.log(peripheral.uuid);
   if(peripheral.uuid === target_uuid)
   {
+    clearTimeout(scan_timeout);
     noble.stopScanning();
     target_device = peripheral;
     console.log('found requested peripheral ' + target_uuid.match(/../g).join(':'))
@@ -86,6 +96,34 @@ function print_firmware(callback){
       callback();
     });
   });
+}
+
+
+
+function oad_program(){
+  // OAD service
+  service_uuids = ['f000ffc004514000b000000000000000'];
+  // Img Identify, Img Block
+  characteristic_uuids = ['f000ffc104514000b000000000000000', 'f000ffc204514000b000000000000000'];
+  target_device.discoverSomeServicesAndCharacteristics(service_uuids, characteristic_uuids,
+  function(err, services, characteristics){
+
+    chars_servs_exist(err, services, characteristics);
+
+    console.log('programming device ' + target_uuid.match(/../g).join(':'));
+    //TODO actually program
+  });
+  target_device.disconnect();
+}
+
+function chars_servs_exist(err, services, characteristics){
+  if(!services[0]){
+    throw new Error('no services found');
+  }
+  if(!characteristics[0]){
+    throw new Error('no characteristics found');
+  }
+  if(err) throw err;
 }
 
 function print_help()
