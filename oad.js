@@ -23,7 +23,6 @@ if(!argv.b || !argv.f)
 {
   console.log('invalid command line options');
   print_help();
-  process.exit();
 }
 else if(argv.b)
 {
@@ -32,7 +31,6 @@ else if(argv.b)
   {
     console.log('invalid ble address');
     print_help();
-    process.exit();
   }
   console.log(target_uuid);
 }
@@ -61,33 +59,31 @@ function discover_device(peripheral)
   {
     noble.stopScanning();
     target_device = peripheral;
-    console.log('found peripheral ' + target_uuid.match(/../g).join(':'))
-    target_device.connect(on_connect);
-    target_device.on('disconnect', function(){
+    console.log('found requested peripheral ' + target_uuid.match(/../g).join(':'))
+    target_device.connect(function(err) {
+      if(err) throw err;
+      console.log('connected to ' + target_uuid.match(/../g).join(':'));
+      print_firmware(oad_program);
+    });
+    target_device.on('disconnect', function() {
       console.log('disconnected');
       process.exit(0);
     });
   }
 }
 
-function on_connect(err)
-{
-  if(err) throw err;
-  console.log('connected');
-  print_firmware();
-}
+function print_firmware(callback){
+  service_uuids = ['180a'];
+  characteristic_uuids = ['2a26'];
+  target_device.discoverSomeServicesAndCharacteristics(service_uuids, characteristic_uuids,
+  function(err, services, characteristics){
 
-function print_firmware(){
-  service_uuid = ['180a'];
-  characteristic_uuid = ['2a26'];
-  target_device.discoverServices(service_uuid, function(err, services){
-    if(!services[0] || err) throw err;
-    service = services[0];
-    service.discoverCharacteristics(characteristic_uuid, function(err, characteristics){
-      char = characteristics[0];
-      char.read(function(err, data){
-        console.log(data.toString('ascii'));
-      });
+    chars_servs_exist(err, services, characteristics);
+
+    char = characteristics[0];
+    char.read(function(err, data){
+      console.log('Current device firmware is ' + data.toString('ascii'));
+      callback();
     });
   });
 }
