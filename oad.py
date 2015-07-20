@@ -25,14 +25,11 @@ class oad_target():
 
     def get_firmware_rev(self):
         services = self._peripheral.getServices()
-        for service in services:
-            print(service)
         service = self._peripheral.getServiceByUUID(0x180a)
         char = service.getCharacteristics(0x2a26) [0]
         if not char:
             print("no characteristics match")
-        print(char.read())
-        return char
+        return char.read()
 
     def connect(self, address):
         self._peripheral = Peripheral(address)
@@ -77,7 +74,7 @@ def main(argv):
     #make_peripheral(remote_address, peripheral)
     target_device = oad_target(remote_address)
     rev = target_device.get_firmware_rev()
-    print(rev)
+    print(''.join(format(x, '02x') for x in rev))
 
 def do_lescan(proc_list):
     # make sure hcitool is installed, and launch subprocess
