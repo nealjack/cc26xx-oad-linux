@@ -12,8 +12,12 @@ var IMG_IDENTIFY_CHARACTERISTIC = 'f000ffc104514000b000000000000000';
 var IMG_BLOCK_CHARACTERISTIC = 'f000ffc204514000b000000000000000';
 var OAD_BLOCK_SIZE = 16;
 var OAD_BUFFER_SIZE = 2 + OAD_BLOCK_SIZE;
+var HAL_FLASH_WORD_SIZE = 4;
 
 var img_hdr = null;
+var img = null;
+var img_nblocks = null;
+var img_iblocks = 0;
 
 // ble connection variables
 var target_uuid = null;
@@ -25,7 +29,7 @@ var target_device = null;
 // Input args
 if(argv.h)
 {
-    print_help();
+  print_help();
 }
 if(!argv.b || !argv.f)
 {
@@ -48,6 +52,9 @@ init();
 function init(){
   fs.readFile(argv.f, function (err, data) {
     if (err) throw err;
+    img = data;
+    img_nblocks = img.length / OAD_BLOCK_SIZE;
+    console.log(img_nblocks);
     img_hdr = prepare_image_header(data);
     noble.on('discover', discover_device);
   });
@@ -173,16 +180,18 @@ function oad_program(){
       }
 
       console.log('programming device with ' + argv.f);
-      console.log('\nenabling notifications');
+
+      // noble enable notifications for characteristics
       img_block_char.notify(true);
-      img_block_char.on('data', next_block);
+      img_block_char.on('data', block_notify);
       img_identify_char.notify(true);
       img_identify_char.on('data', rejected_header);
-      img_block_char.write(new Buffer("01:00", 'ascii'), false, function(err){
+
+      // write "01:00" to enable notifications on target device
+      img_block_char.write(new Buffer("01:00", 'utf-8'), false, function(err){
         if(err) throw err;
-        console.log('should have enabled notifications\n')
-        console.log(img_hdr);
         console.log('sending image header');
+        console.log(img_hdr);
         img_identify_char.write(img_hdr, false);
       })
 
@@ -191,10 +200,24 @@ function oad_program(){
   });
 }
 
-function next_block(data, notification){
-  console.log('got something from block');
-  if(notification)
+function block_notify(data, notification){
+  console.log('got notification from block characteristic');
+  if(notification) {
     console.log(data);
+  }
+  if(img_iblocks < img_nblocks){
+    console.log('sending block ' + img_iblocks);
+    var block_buf = new Buffer(OAD_BUFFER_SIZE);
+    block_buf[0] = data[0];
+    block_buf[1] = data[1];
+    img.copy(block_buf, 2, img_iblocks * OAD_BLOCK_SIZE, (++img_iblocks) * OAD_BLOCK_SIZE);
+    console.log('sending buffer:');
+    console.log(block_buf);
+    img_block_char.write(block_buf, false, function(err){
+      if(err) throw err;
+      console.log('sent block');
+    });
+  }
 }
 
 function rejected_header(data, notification){
