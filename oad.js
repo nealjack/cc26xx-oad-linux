@@ -2,6 +2,7 @@ var noble = require('noble');
 var argv = require('minimist')(process.argv.slice(2));
 var fs = require('fs');
 var async = require('async');
+var prompt = require('prompt');
 var crc = require('./crc.js');
 
 //console.dir(argv);
@@ -12,12 +13,12 @@ var IMG_BLOCK_CHARACTERISTIC = 'f000ffc204514000b000000000000000';
 var OAD_BLOCK_SIZE = 16;
 var OAD_BUFFER_SIZE = 2 + OAD_BLOCK_SIZE;
 
-// image variables
-var img_header = new Buffer(12);
+var img_hdr = null;
 
 // ble connection variables
 var target_uuid = null;
 var scan_timeout = null;
+var timeout = 10000; // 10 seconds
 var target_device = null;
 //var discovered = new Array();
 
@@ -47,7 +48,7 @@ init();
 function init(){
   fs.readFile(argv.f, function (err, data) {
     if (err) throw err;
-    prepare_image_header(data);
+    img_hdr = prepare_image_header(data);
     noble.on('discover', discover_device);
   });
 
@@ -59,7 +60,7 @@ function init(){
         scan_timeout = setTimeout(function(){
           console.log('Scanning timed out, ensure peripheral is advertising.');
           process.exit();
-        }, 10000);
+        }, timeout);
       }
       else {
         noble.stopScanning();
@@ -69,15 +70,50 @@ function init(){
 
 function prepare_image_header(data)
 {
-  data.copy(img_header, 0, 0x4, 0x10);
-  console.log(img_header);
-  var crc_value = crc.calc_image_crc(0, data);
-  console.log('CRC for image is 0x' + crc_value.toString(16));
+  var len = ((32 * 0x1000) / (16 / 4));
+  console.log('length: ' + len);
+  var ver = 0;
+  var uid = new Buffer([0x45, 0x45, 0x45, 0x45]);
+  var addr = 0;
+  var img_type = 1;
+  var crc0 = crc.calc_image_crc(0, data);
+  console.log('CRC for image is 0x' + crc0.toString(16));
+  var crc1 = 0xFFFF;
+  var img_hdr = new Buffer(16);
+  img_hdr[0] = loUint16(crc0);
+  img_hdr[1] = hiUint16(crc0);
+  img_hdr[2] = loUint16(crc1);
+  img_hdr[3] = hiUint16(crc1);
+  img_hdr[4] = loUint16(ver);
+  img_hdr[5] = hiUint16(ver);
+  img_hdr[6] = loUint16(len);
+  img_hdr[7] = hiUint16(len);
+  img_hdr[8] = uid[0];
+  img_hdr[9] = uid[1];
+  img_hdr[10] = uid[2];
+  img_hdr[11] = uid[3];
+  img_hdr[12] = loUint16(addr);
+  img_hdr[13] = hiUint16(addr);
+  img_hdr[14] = img_type;
+  img_hdr[15] = 0xFF;
+
+  return img_hdr;
+}
+
+function loUint16(x)
+{
+  // mask as byte
+  return x & 0x00FF;
+}
+function hiUint16(x)
+{
+  // right shift one byte, mask as byte
+  return (x >> 8) & 0x00FF;
 }
 
 function discover_device(peripheral)
 {
-  console.log(peripheral.uuid);
+  //console.log(peripheral.uuid);
   if(peripheral.uuid === target_uuid)
   {
     clearTimeout(scan_timeout);
@@ -125,13 +161,44 @@ function oad_program(){
     chars_servs_exist(err, services, characteristics);
     img_identify_char = characteristics[0];
     img_block_char = characteristics[1];
-    console.log('programming device ' + target_uuid.match(/../g).join(':'));
+    console.log('ready to program device ' + target_uuid.match(/../g).join(':'));
 
     //TODO actually program
+    prompt.start();
+    console.log('start? (y/n)');
+    prompt.get(['start'], function (err, result){
+      if(err) throw err;
+      if(result.start !== 'y'){
+        target_device.disconnect();
+      }
 
-    target_device.disconnect();
+      console.log('programming device with ' + argv.f);
+      console.log('\nenabling notifications');
+      img_block_char.notify(true);
+      img_block_char.on('data', next_block);
+      img_identify_char.notify(true);
+      img_identify_char.on('data', rejected_header);
+      img_block_char.write(new Buffer("01:00", 'ascii'), false, function(err){
+        if(err) throw err;
+        console.log('should have enabled notifications\n')
+        console.log(img_hdr);
+        console.log('sending image header');
+        img_identify_char.write(img_hdr, false);
+      })
+
+      //target_device.disconnect();
+    });
   });
-  target_device.disconnect();
+}
+
+function next_block(data, notification){
+  console.log('got something from block');
+  if(notification)
+    console.log(data);
+}
+
+function rejected_header(data, notification){
+  console.log('got something from identify');
 }
 
 function chars_servs_exist(err, services, characteristics){
