@@ -56,7 +56,7 @@ function crc16(crc, val) {
     if((val & 0x80) === 0x80) {
       crc |= 0x0001;
     }
-    if(msb == 1){
+    if(msb === 1){
       crc ^= CRC_POLY;
     }
   }
