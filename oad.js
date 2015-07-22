@@ -8,9 +8,10 @@ var crc = require('./crc.js');
 //console.dir(argv);
 
 // Programming parameters
-var OAD_CONN_INTERVAL = 6; // 15 milliseconds
+var OAD_CONN_INTERVAL = 16; // 15 milliseconds
 var OAD_SUPERVISION_TIMEOUT = 50; // 500 milliseconds
-var GATT_WRITE_TIMEOUT = 300; // Milliseconds
+var GATT_WRITE_TIMEOUT = 500; // Milliseconds
+var write_block_timeout = null;
 
 // OAD parameters
 var OAD_SERVICE = 'f000ffc004514000b000000000000000';
@@ -33,8 +34,9 @@ var img_iblocks = 0;
 // ble connection variables
 var target_uuid = null;
 var scan_timeout = null;
-var timeout = 10000; // 10 seconds
+var scan_timeout_time = 10000; // 10 seconds
 var target_device = null;
+var programming = true;
 //var discovered = new Array();
 
 // Input args
@@ -67,27 +69,28 @@ function init(){
     img_nblocks = img.length / OAD_BLOCK_SIZE;
     console.log(img_nblocks);
     img_hdr = prepare_image_header(data);
-    noble.on('discover', discover_device);
-  });
 
-  noble.on('stateChange', function (state) {
-      console.log("Starting scan...");
-      if (state === 'poweredOn') {
-        noble.startScanning([], false);
-        scan_timeout = setTimeout(function(){
-          console.log('Scanning timed out, ensure peripheral is advertising.');
-          process.exit();
-        }, timeout);
-      }
-      else {
-        noble.stopScanning();
-      }
+    noble.on('discover', discover_device);
   });
 }
 
+noble.on('stateChange', function (state) {
+    console.log("Starting scan...");
+    if (state === 'poweredOn') {
+      noble.startScanning([], false);
+      scan_timeout = setTimeout(function(){
+        console.log('Scanning timed out, ensure peripheral is advertising.');
+        process.exit();
+      }, scan_timeout_time);
+    }
+    else {
+      noble.stopScanning();
+    }
+});
+
 function prepare_image_header(data)
 {
-  var len = img.length / OAD_BLOCK_SIZE;
+  var len = (img.length / (16 / 4));
   var ver = 0;
   var uid = new Buffer([0x45, 0x45, 0x45, 0x45]);
   var addr = 0;
@@ -146,7 +149,7 @@ function discover_device(peripheral)
       });
     });
     target_device.on('disconnect', function() {
-      console.log('disconnected');
+      console.log('\ndisconnected');
       process.exit(0);
     });
   }
@@ -179,10 +182,14 @@ function set_connection_params(callback){
     if(!characteristics[0]){
       throw new Error('characteristic0 doesn\'t exist!');
     }
-    else if(!characteristics[1])
+    else if(!characteristics[1]){
       throw new Error('characteristic1 doesn\'t exist');
+    }
 
     conn_params_char = characteristics[0];
+    conn_params_char.read(function(err, data){
+      console.log(data);
+    });
     conn_params_char.notify(true, function(err){
       conn_params_char.on('data', function(data, notification){
         console.log('successfully wrote new connection parameters:');
@@ -258,24 +265,41 @@ function block_notify(data, notification){
   // if(notification) {
   //   console.log(data);
   // }
+  if(!programming) return;
+
+  //clearTimeout(write_block_timeout);
   if(img_iblocks < img_nblocks){
+    programming = true;
     //console.log('sending block ' + img_iblocks);
     var block_buf = new Buffer(OAD_BUFFER_SIZE);
-    block_buf[0] = data[0];
-    block_buf[1] = data[1];
-    img.copy(block_buf, 2, img_iblocks * OAD_BLOCK_SIZE, (++img_iblocks) * OAD_BLOCK_SIZE);
+    block_buf[0] = loUint16(img_iblocks);
+    block_buf[1] = hiUint16(img_iblocks);
+    img.copy(block_buf, 2, img_iblocks * OAD_BLOCK_SIZE, (img_iblocks + 1) * OAD_BLOCK_SIZE);
     //console.log('sending buffer:');
     //console.log(block_buf);
     img_block_char.write(block_buf, false, function(err){
       if(err) throw err;
+      process.stdout.write("Downloaded " + img_iblocks + "/" + img_nblocks +" blocks\r");
+      ++img_iblocks;
+      if(img_iblocks == img_nblocks){
+        programming = false;
+      }
+      // write_block_timeout = setTimeout(function(){
+      //   --img_iblocks;
+      //   console.log('\nwrite timeout, retrying');
+      //   block_notify(data, true);
+      // }, GATT_WRITE_TIMEOUT);
       //console.log('sent block');
     });
-    if(!(img_iblocks % 10)){
-      process.stdout.write("Downloaded " + img_iblocks + "/" + img_nblocks +" blocks\r");
-    }
   }
   else {
+    //clearTimeout(write_block_timeout);
     console.log('finished programming');
+    programming = false;
+  }
+
+  if(!programming){
+    console.log('done!');
   }
 }
 
