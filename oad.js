@@ -116,6 +116,9 @@ function prepare_image_header(data)
   img_hdr[14] = img_type;
   img_hdr[15] = 0xFF;
 
+  // img_hdr.copy(img);
+  // console.log(img.slice(0, 15));
+
   return img_hdr;
 }
 
@@ -240,20 +243,13 @@ function oad_program(){
       img_block_char.notify(true, function(err){
         if(err) throw err;
         img_block_char.on('data', block_notify);
+        img_identify_char.notify(true, function(err){
+          if(err) throw err;
+          img_identify_char.on('data', rejected_header);
+          img_identify_char.write(img_hdr, false);
+        });
       });
 
-      img_identify_char.notify(true, function(err){
-        if(err) throw err;
-        img_identify_char.on('data', rejected_header);
-      });
-
-      // write "01:00" to enable notifications on target device
-      img_block_char.write(new Buffer("01:00", 'utf-8'), false, function(err){
-        if(err) throw err;
-        console.log('sending image header');
-        console.log(img_hdr);
-        img_identify_char.write(img_hdr, false);
-      })
 
       //target_device.disconnect();
     });
@@ -265,8 +261,10 @@ function block_notify(data, notification){
   // if(notification) {
   //   console.log(data);
   // }
-  if(!programming) return;
-
+  if(!programming){
+    console.log('this is bad');
+    return;
+  }
   //clearTimeout(write_block_timeout);
   if(img_iblocks < img_nblocks){
     programming = true;
@@ -279,10 +277,10 @@ function block_notify(data, notification){
     //console.log(block_buf);
     img_block_char.write(block_buf, false, function(err){
       if(err) throw err;
-      process.stdout.write("Downloaded " + img_iblocks + "/" + img_nblocks +" blocks\r");
       ++img_iblocks;
-      if(img_iblocks == img_nblocks){
-        programming = false;
+      process.stdout.write("Downloaded " + img_iblocks + "/" + img_nblocks +" blocks\n");
+      if(img_iblocks === img_nblocks){
+        console.log('\nfinished programming');
       }
       // write_block_timeout = setTimeout(function(){
       //   --img_iblocks;
