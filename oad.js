@@ -15,8 +15,8 @@ var write_block_timeout = null;
 
 // OAD parameters
 var OAD_SERVICE = 'f000ffc004514000b000000000000000';
-var IMG_IDENTIFY_CHARACTERISTIC = 'f000ffc104514000b000000000000000';
-var IMG_BLOCK_CHARACTERISTIC = 'f000ffc204514000b000000000000000';
+var IMG_IDENTIFY_CHAR = 'f000ffc104514000b000000000000000';
+var IMG_BLOCK_CHAR = 'f000ffc204514000b000000000000000';
 var OAD_BLOCK_SIZE = 16;
 var OAD_BUFFER_SIZE = 2 + OAD_BLOCK_SIZE;
 var HAL_FLASH_WORD_SIZE = 4;
@@ -220,7 +220,7 @@ function oad_program(){
   // OAD service
   var service_uuids = [OAD_SERVICE];
   // Img Identify, Img Block
-  var characteristic_uuids = [IMG_IDENTIFY_CHARACTERISTIC, IMG_BLOCK_CHARACTERISTIC];
+  var characteristic_uuids = [IMG_IDENTIFY_CHAR, IMG_BLOCK_CHAR];
   target_device.discoverSomeServicesAndCharacteristics(service_uuids, characteristic_uuids,
   function(err, services, characteristics){
 
@@ -285,7 +285,7 @@ function block_notify(data, notification){
         img_block_char.notify(false, function(err){
           img_identify_char.notify(false, function(err){
             console.log('done');
-            
+
           });
         });
       }
@@ -314,13 +314,11 @@ function chars_servs_exist(err, services, characteristics){
   if(err) throw err;
 }
 
-function print_help()
-{
+function print_help(){
   console.log('\n-h displays this message');
   console.log('-b for device address in the form XX:XX:XX:XX:XX:XX');
   console.log('-f provides a required filename for firmware *.bin\n');
   process.exit();
-
 }
 
 // function choose_device(devices)
