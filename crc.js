@@ -6,9 +6,11 @@ function calc_image_crc(page, buf){
   var crc = 0x00;
   var addr = page * 0x1000;
 
-  var pageBeg = page & SHORT_MASK;
-  var pageEnd = (buf.length / (0x1000 / 4)) & BYTE_MASK;
-  var osetEnd = ((buf.length - (pageEnd * (0x1000 / 4))) * 4);
+  //TODO fix this length thing
+  var len = ((32 * 0x1000) / (16 / 4));
+  var pageBeg = page & BYTE_MASK;
+  var pageEnd = (len / (0x1000 / 4)) & BYTE_MASK;
+  var osetEnd = ((len - (pageEnd * (0x1000 / 4))) * 4);
 
   pageEnd += pageBeg;
 
@@ -40,8 +42,7 @@ function crc16(crc, val) {
   val &= BYTE_MASK;
   crc &= SHORT_MASK;
 
-  for(var cnt = 0; cnt < 8; cnt++, val <<= 1)
-  {
+  for(var cnt = 0; cnt < 8; cnt++, val <<= 1) {
     var msb;
     val &= BYTE_MASK;
 
@@ -58,6 +59,7 @@ function crc16(crc, val) {
     }
     if(msb === 1){
       crc ^= CRC_POLY;
+      crc &= SHORT_MASK;
     }
   }
 
