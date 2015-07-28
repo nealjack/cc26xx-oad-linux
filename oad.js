@@ -8,7 +8,7 @@ var crc = require('./crc.js');
 //console.dir(argv);
 
 // Programming parameters
-var OAD_CONN_INTERVAL = 16; // 15 milliseconds
+var OAD_CONN_INTERVAL = 6; // 15 milliseconds
 var OAD_SUPERVISION_TIMEOUT = 50; // 500 milliseconds
 var GATT_WRITE_TIMEOUT = 500; // Milliseconds
 var write_block_timeout = null;
@@ -270,17 +270,24 @@ function block_notify(data, notification){
     programming = true;
     //console.log('sending block ' + img_iblocks);
     var block_buf = new Buffer(OAD_BUFFER_SIZE);
-    block_buf[0] = loUint16(img_iblocks);
-    block_buf[1] = hiUint16(img_iblocks);
+    block_buf[0] = data[0];
+    block_buf[1] = data[1];
     img.copy(block_buf, 2, img_iblocks * OAD_BLOCK_SIZE, (img_iblocks + 1) * OAD_BLOCK_SIZE);
     //console.log('sending buffer:');
     //console.log(block_buf);
     img_block_char.write(block_buf, false, function(err){
       if(err) throw err;
       ++img_iblocks;
-      process.stdout.write("Downloaded " + img_iblocks + "/" + img_nblocks +" blocks\n");
+      process.stdout.write("Downloaded " + img_iblocks + "/" + img_nblocks +" blocks\r");
       if(img_iblocks === img_nblocks){
         console.log('\nfinished programming');
+        console.log('trying to stop notifying img_block_char');
+        img_block_char.notify(false, function(err){
+          img_identify_char.notify(false, function(err){
+            console.log('done');
+            
+          });
+        });
       }
       // write_block_timeout = setTimeout(function(){
       //   --img_iblocks;
@@ -290,18 +297,10 @@ function block_notify(data, notification){
       //console.log('sent block');
     });
   }
-  else {
-    //clearTimeout(write_block_timeout);
-    console.log('finished programming');
-    programming = false;
-  }
-
-  if(!programming){
-    console.log('done!');
-  }
 }
 
 function rejected_header(data, notification){
+  //TODO better error checking
   console.log('got something from identify');
 }
 
