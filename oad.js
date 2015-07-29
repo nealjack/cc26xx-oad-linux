@@ -24,7 +24,7 @@ var CONNECTION_PARAMS_SERVICE = 'f000ccc004514000b000000000000000';
 var CONN_PARAMS_CHAR = 'f000ccc104514000b000000000000000';
 var CONN_PARAMS_REQ_CHAR = 'f000ccc204514000b000000000000000';
 
-var SCAN_TIMEOUT = 10000; // 10 seconds
+var SCAN_TIMEOUT = 5000; // 10 seconds
 
 //var discovered = new Array();
 var fwUpdate = FwUpdate_CC26xx(argv);
@@ -36,6 +36,7 @@ function FwUpdate_CC26xx(argv) {
   this.fileBuffer = null;
   this.imgHdr = null;
 
+  this.scanList = [];
   this.scanTimer = null;
   //this.writeBlockTimer = null;
 
@@ -51,7 +52,7 @@ function FwUpdate_CC26xx(argv) {
   {
     print_help();
   }
-  if(!argv.b || !argv.f)
+  if(!argv.f)
   {
     console.log('invalid command line options');
     print_help();
@@ -65,6 +66,12 @@ function FwUpdate_CC26xx(argv) {
       print_help();
     }
   }
+  else
+  {
+    // argv.s
+    console.log('will perform scan');
+  }
+
 
   fs.readFile(argv.f, function init(err, data) {
     if (err) throw err;
@@ -77,8 +84,14 @@ function FwUpdate_CC26xx(argv) {
         if (state === 'poweredOn') {
           noble.startScanning([], false);
           self.scanTimer = setTimeout(function() {
-            console.log('Scanning timed out, ensure peripheral is advertising.');
-            process.exit();
+            noble.stopScanning();
+            if(argv.b) {
+              console.log('Scanning timed out, ensure peripheral is advertising.');
+              process.exit();
+            }
+            else {
+              _pickDevice();
+            }
           }, SCAN_TIMEOUT);
         }
         else {
@@ -94,27 +107,44 @@ function FwUpdate_CC26xx(argv) {
       noble.stopScanning();
       self.targetDevice = peripheral;
       console.log('found requested peripheral ' + self.targetUuid.match(/../g).join(':'))
-      self.targetDevice.connect(function(err) {
-        if(err) throw err;
-        console.log('connected to ' + self.targetUuid.match(/../g).join(':'));
-        _prepareDevice();
-      });
-      self.targetDevice.on('disconnect', function() {
-        console.log('disconnected from ' + self.targetUuid.match(/../g).join(':'));
-        process.exit(0);
-      });
+      _prepareDevice();
+    }
+    else {
+      self.scanList.push(peripheral);
     }
   }
 
-  function test() {
-    console.log('blah');
+  function _pickDevice() {
+    console.log('Pick a device from the list: ');
+    for(var i = 0; i < scanList.length; ++i) {
+      var peripheral = scanList[i];
+      console.log(i + ' ' + scanList[i].uuid.match(/../g).join(':') + ' ' + scanList[i].advertisement.localName);
+    }
+    prompt.start();
+    prompt.get('device', function(err, result){
+      if(err) throw err;
+      if(result < 0 || result >= scanList.length){
+        console.log('bad input');
+      }
+      self.targetDevice = scanList[result.device];
+      _prepareDevice();
+    });
+
   }
 
   function _prepareDevice() {
-    _setConnectionParams(function() {
-      _printFirmware(function() {
-        _oadProgram();
+    self.targetDevice.connect(function(err) {
+      if(err) throw err;
+      console.log('connected to ' + self.targetDevice.uuid.match(/../g).join(':'));
+      _setConnectionParams(function() {
+        _printFirmware(function() {
+          _oadProgram();
+        });
       });
+    });
+    self.targetDevice.on('disconnect', function() {
+      console.log('disconnected from ' + self.targetDevice.uuid.match(/../g).join(':'));
+      process.exit(0);
     });
   }
 
