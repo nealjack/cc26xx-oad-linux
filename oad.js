@@ -2,6 +2,7 @@ var noble = require('noble');
 var argv = require('minimist')(process.argv.slice(2));
 var fs = require('fs');
 var prompt = require('prompt');
+var ProgressBar = require('progress');
 var ImgHdr = require('./ImgHdr');
 var binary = require('./Binary');
 
@@ -43,6 +44,8 @@ function FwUpdate_CC26xx(argv) {
   this.programming = true;
   this.imgIdentifyChar = null;
   this.imgBlockChar = null;
+
+  this.progressBar = null;
 
   if(argv.h)
   {
@@ -189,6 +192,12 @@ function FwUpdate_CC26xx(argv) {
         }
 
         console.log('programming device with ' + argv.f);
+        self.progressBar = new ProgressBar('downloading [:bar] :percent :etas', {
+          complete: '=',
+          incomplete: ' ',
+          width: 20,
+          total: self.fileBuffer.length/OAD_BLOCK_SIZE
+        });
 
         // noble enable notifications for characteristics
         self.imgBlockChar.notify(true, function(err) {
@@ -229,10 +238,13 @@ function FwUpdate_CC26xx(argv) {
           throw err;
         }
         ++self.img_iBlocks;
-        process.stdout.write("Downloaded " + self.img_iBlocks + "/" + self.img_nBlocks +" blocks\r");
+        // update the progress bar
+        if(img_iBlocks % 10 === 0) {
+          self.progressBar.tick(10);
+        }
+        // process.stdout.write("Downloaded " + self.img_iBlocks + "/" + self.img_nBlocks +" blocks\r");
         if(self.img_iBlocks === self.img_nBlocks) {
           console.log('\nfinished programming');
-          console.log('trying to stop notifying self.imgBlockChar');
           self.imgBlockChar.notify(false, function(err) {
             self.imgIdentifyChar.notify(false, function(err) {
               console.log('done');
