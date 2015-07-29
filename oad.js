@@ -3,6 +3,8 @@ var argv = require('minimist')(process.argv.slice(2));
 var fs = require('fs');
 var async = require('async');
 var prompt = require('prompt');
+var ImgHdr = require('./ImgHdr.js');
+var binary = require('./Binary');
 var crc = require('./crc.js');
 
 //console.dir(argv);
@@ -26,8 +28,8 @@ var CONN_PARAMS_CHAR = 'f000ccc104514000b000000000000000';
 var CONN_PARAMS_REQ_CHAR = 'f000ccc204514000b000000000000000';
 
 
-var img_hdr = null;
 var img = null;
+var imgHdr = null;
 var img_nblocks = null;
 var img_iblocks = 0;
 
@@ -68,8 +70,7 @@ function init(){
     img = data;
     img_nblocks = img.length / OAD_BLOCK_SIZE;
     console.log(img_nblocks);
-    img_hdr = prepare_image_header(data);
-
+    imgHdr = new ImgHdr(data);
     noble.on('discover', discover_device);
   });
 }
@@ -88,50 +89,50 @@ noble.on('stateChange', function (state) {
     }
 });
 
-function prepare_image_header(data)
-{
-  var len = (img.length / (16 / 4));
-  var ver = 0;
-  var uid = new Buffer([0x45, 0x45, 0x45, 0x45]);
-  var addr = 0;
-  var img_type = 1;
-  var crc0 = crc.calc_image_crc(0, data);
-  console.log('CRC for image is 0x' + crc0.toString(16));
-  var crc1 = 0xFFFF;
-  var img_hdr = new Buffer(16);
-  img_hdr[0] = loUint16(crc0);
-  img_hdr[1] = hiUint16(crc0);
-  img_hdr[2] = loUint16(crc1);
-  img_hdr[3] = hiUint16(crc1);
-  img_hdr[4] = loUint16(ver);
-  img_hdr[5] = hiUint16(ver);
-  img_hdr[6] = loUint16(len);
-  img_hdr[7] = hiUint16(len);
-  img_hdr[8] = uid[0];
-  img_hdr[9] = uid[1];
-  img_hdr[10] = uid[2];
-  img_hdr[11] = uid[3];
-  img_hdr[12] = loUint16(addr);
-  img_hdr[13] = hiUint16(addr);
-  img_hdr[14] = img_type;
-  img_hdr[15] = 0xFF;
+// function prepare_image_header(data)
+// {
+//   var len = (img.length / (16 / 4));
+//   var ver = 0;
+//   var uid = new Buffer([0x45, 0x45, 0x45, 0x45]);
+//   var addr = 0;
+//   var img_type = 1;
+//   var crc0 = crc.calc_image_crc(0, data);
+//   console.log('CRC for image is 0x' + crc0.toString(16));
+//   var crc1 = 0xFFFF;
+//   var img_hdr = new Buffer(16);
+//   img_hdr[0] = loUint16(crc0);
+//   img_hdr[1] = hiUint16(crc0);
+//   img_hdr[2] = loUint16(crc1);
+//   img_hdr[3] = hiUint16(crc1);
+//   img_hdr[4] = loUint16(ver);
+//   img_hdr[5] = hiUint16(ver);
+//   img_hdr[6] = loUint16(len);
+//   img_hdr[7] = hiUint16(len);
+//   img_hdr[8] = uid[0];
+//   img_hdr[9] = uid[1];
+//   img_hdr[10] = uid[2];
+//   img_hdr[11] = uid[3];
+//   img_hdr[12] = loUint16(addr);
+//   img_hdr[13] = hiUint16(addr);
+//   img_hdr[14] = img_type;
+//   img_hdr[15] = 0xFF;
+//
+//   // img_hdr.copy(img);
+//   // console.log(img.slice(0, 15));
+//
+//   return img_hdr;
+// }
 
-  // img_hdr.copy(img);
-  // console.log(img.slice(0, 15));
-
-  return img_hdr;
-}
-
-function loUint16(x)
-{
-  // mask as byte
-  return x & 0x00FF;
-}
-function hiUint16(x)
-{
-  // right shift one byte, mask as byte
-  return (x >> 8) & 0x00FF;
-}
+// function loUint16(x)
+// {
+//   // mask as byte
+//   return x & 0x00FF;
+// }
+// function hiUint16(x)
+// {
+//   // right shift one byte, mask as byte
+//   return (x >> 8) & 0x00FF;
+// }
 
 function discover_device(peripheral)
 {
@@ -202,10 +203,10 @@ function set_connection_params(callback){
     });
 
     conn_params_req_char = characteristics[1];
-    var param_buf = new Buffer([loUint16(OAD_CONN_INTERVAL), hiUint16(OAD_CONN_INTERVAL),
-                                loUint16(OAD_CONN_INTERVAL), hiUint16(OAD_CONN_INTERVAL),
+    var param_buf = new Buffer([binary.loUint16(OAD_CONN_INTERVAL), binary.hiUint16(OAD_CONN_INTERVAL),
+                                binary.loUint16(OAD_CONN_INTERVAL), binary.hiUint16(OAD_CONN_INTERVAL),
                                 0,0,
-                                loUint16(OAD_SUPERVISION_TIMEOUT), hiUint16(OAD_SUPERVISION_TIMEOUT)]);
+                                binary.loUint16(OAD_SUPERVISION_TIMEOUT), binary.hiUint16(OAD_SUPERVISION_TIMEOUT)]);
     console.log(param_buf);
     conn_params_req_char.write(param_buf, false, function(err){
       if(err) throw err;
@@ -246,7 +247,7 @@ function oad_program(){
         img_identify_char.notify(true, function(err){
           if(err) throw err;
           img_identify_char.on('data', rejected_header);
-          img_identify_char.write(img_hdr, false);
+          img_identify_char.write(imgHdr.getRequest(), false);
         });
       });
 
