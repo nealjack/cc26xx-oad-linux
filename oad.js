@@ -3,9 +3,8 @@ var argv = require('minimist')(process.argv.slice(2));
 var fs = require('fs');
 var async = require('async');
 var prompt = require('prompt');
-var ImgHdr = require('./ImgHdr.js');
+var ImgHdr = require('./ImgHdr');
 var binary = require('./Binary');
-var crc = require('./crc.js');
 
 //console.dir(argv);
 
@@ -21,7 +20,6 @@ var IMG_IDENTIFY_CHAR = 'f000ffc104514000b000000000000000';
 var IMG_BLOCK_CHAR = 'f000ffc204514000b000000000000000';
 var OAD_BLOCK_SIZE = 16;
 var OAD_BUFFER_SIZE = 2 + OAD_BLOCK_SIZE;
-var HAL_FLASH_WORD_SIZE = 4;
 
 var CONNECTION_PARAMS_SERVICE = 'f000ccc004514000b000000000000000';
 var CONN_PARAMS_CHAR = 'f000ccc104514000b000000000000000';
@@ -62,77 +60,29 @@ else if(argv.b)
   console.log(target_uuid);
 }
 
-init();
+fs.readFile(argv.f, init);
 
-function init(){
-  fs.readFile(argv.f, function (err, data) {
-    if (err) throw err;
-    img = data;
-    img_nblocks = img.length / OAD_BLOCK_SIZE;
-    console.log(img_nblocks);
-    imgHdr = new ImgHdr(data);
-    noble.on('discover', discover_device);
+function init(err, data){
+  if (err) throw err;
+  img = data;
+  img_nblocks = img.length / OAD_BLOCK_SIZE;
+  console.log(img_nblocks);
+  imgHdr = new ImgHdr(data);
+  noble.on('discover', discover_device);
+  noble.on('stateChange', function (state) {
+      console.log("Starting scan...");
+      if (state === 'poweredOn') {
+        noble.startScanning([], false);
+        scan_timeout = setTimeout(function(){
+          console.log('Scanning timed out, ensure peripheral is advertising.');
+          process.exit();
+        }, scan_timeout_time);
+      }
+      else {
+        noble.stopScanning();
+      }
   });
 }
-
-noble.on('stateChange', function (state) {
-    console.log("Starting scan...");
-    if (state === 'poweredOn') {
-      noble.startScanning([], false);
-      scan_timeout = setTimeout(function(){
-        console.log('Scanning timed out, ensure peripheral is advertising.');
-        process.exit();
-      }, scan_timeout_time);
-    }
-    else {
-      noble.stopScanning();
-    }
-});
-
-// function prepare_image_header(data)
-// {
-//   var len = (img.length / (16 / 4));
-//   var ver = 0;
-//   var uid = new Buffer([0x45, 0x45, 0x45, 0x45]);
-//   var addr = 0;
-//   var img_type = 1;
-//   var crc0 = crc.calc_image_crc(0, data);
-//   console.log('CRC for image is 0x' + crc0.toString(16));
-//   var crc1 = 0xFFFF;
-//   var img_hdr = new Buffer(16);
-//   img_hdr[0] = loUint16(crc0);
-//   img_hdr[1] = hiUint16(crc0);
-//   img_hdr[2] = loUint16(crc1);
-//   img_hdr[3] = hiUint16(crc1);
-//   img_hdr[4] = loUint16(ver);
-//   img_hdr[5] = hiUint16(ver);
-//   img_hdr[6] = loUint16(len);
-//   img_hdr[7] = hiUint16(len);
-//   img_hdr[8] = uid[0];
-//   img_hdr[9] = uid[1];
-//   img_hdr[10] = uid[2];
-//   img_hdr[11] = uid[3];
-//   img_hdr[12] = loUint16(addr);
-//   img_hdr[13] = hiUint16(addr);
-//   img_hdr[14] = img_type;
-//   img_hdr[15] = 0xFF;
-//
-//   // img_hdr.copy(img);
-//   // console.log(img.slice(0, 15));
-//
-//   return img_hdr;
-// }
-
-// function loUint16(x)
-// {
-//   // mask as byte
-//   return x & 0x00FF;
-// }
-// function hiUint16(x)
-// {
-//   // right shift one byte, mask as byte
-//   return (x >> 8) & 0x00FF;
-// }
 
 function discover_device(peripheral)
 {
@@ -250,9 +200,6 @@ function oad_program(){
           img_identify_char.write(imgHdr.getRequest(), false);
         });
       });
-
-
-      //target_device.disconnect();
     });
   });
 }
