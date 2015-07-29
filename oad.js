@@ -1,7 +1,6 @@
 var noble = require('noble');
 var argv = require('minimist')(process.argv.slice(2));
 var fs = require('fs');
-var async = require('async');
 var prompt = require('prompt');
 var ImgHdr = require('./ImgHdr');
 var binary = require('./Binary');
@@ -11,8 +10,7 @@ var binary = require('./Binary');
 // Programming parameters
 var OAD_CONN_INTERVAL = 6; // 15 milliseconds
 var OAD_SUPERVISION_TIMEOUT = 50; // 500 milliseconds
-var GATT_WRITE_TIMEOUT = 500; // Milliseconds
-var write_block_timeout = null;
+//var GATT_WRITE_TIMEOUT = 50; // Milliseconds
 
 // OAD parameters
 var OAD_SERVICE = 'f000ffc004514000b000000000000000';
@@ -36,7 +34,9 @@ function FwUpdate_CC26xx(argv) {
   this.targetDevice = null;
   this.fileBuffer = null;
   this.imgHdr = null;
+
   this.scanTimer = null;
+  //this.writeBlockTimer = null;
 
   this.img_nBlocks = null;
   this.img_iBlocks = 0;
@@ -61,14 +61,12 @@ function FwUpdate_CC26xx(argv) {
       console.log('invalid ble address');
       print_help();
     }
-    console.log(this.targetUuid);
   }
 
   fs.readFile(argv.f, function init(err, data) {
     if (err) throw err;
     self.fileBuffer = data;
     img_nBlocks = self.fileBuffer.length / OAD_BLOCK_SIZE;
-    console.log(img_nBlocks);
     self.imgHdr = new ImgHdr(data);
     noble.on('discover', _discoverDevice);
     noble.on('stateChange', function (state) {
@@ -99,7 +97,7 @@ function FwUpdate_CC26xx(argv) {
         _prepareDevice();
       });
       self.targetDevice.on('disconnect', function() {
-        console.log('\ndisconnected');
+        console.log('disconnected from ' + self.targetUuid.match(/../g).join(':'));
         process.exit(0);
       });
     }
@@ -153,7 +151,7 @@ function FwUpdate_CC26xx(argv) {
       });
       conn_params_char.notify(true, function(err) {
         conn_params_char.on('data', function(data, notification) {
-          console.log('successfully wrote new connection parameters:');
+          console.log('successfully wrote new connection parameters');
           callback();
         });
       });
@@ -165,7 +163,6 @@ function FwUpdate_CC26xx(argv) {
                                   binary.loUint16(OAD_SUPERVISION_TIMEOUT), binary.hiUint16(OAD_SUPERVISION_TIMEOUT)]);
       conn_params_req_char.write(param_buf, false, function(err) {
         if(err) throw err;
-        console.log('attempted to write new connection parameters');
       });
     });
   }
@@ -208,26 +205,29 @@ function FwUpdate_CC26xx(argv) {
   }
 
   function _blockNotify(data, notification) {
-    //console.log('got notification from block characteristic');
-    // if(notification) {
-    //   console.log(data);
-    // }
+
+    // clearTimeout(writeBlockTimer);
+    // self.writeBlockTimer = setTimeout(function(){
+    //   console.log('timeout on writing block ' + self.img_iBlocks);
+    //   console.log('trying again!');
+    //   _blockNotify(data, notification);
+    // }, GATT_WRITE_TIMEOUT);
+
     if(!self.programming) {
       console.log('this is bad');
       return;
     }
-    //clearTimeout(write_block_timeout);
     if(self.img_iBlocks < self.img_nBlocks) {
       self.programming = true;
-      //console.log('sending block ' + img_iBlocks);
       var block_buf = new Buffer(OAD_BUFFER_SIZE);
       block_buf[0] = data[0];
       block_buf[1] = data[1];
       self.fileBuffer.copy(block_buf, 2, self.img_iBlocks * OAD_BLOCK_SIZE, (self.img_iBlocks + 1) * OAD_BLOCK_SIZE);
-      //console.log('sending buffer:');
-      //console.log(block_buf);
       self.imgBlockChar.write(block_buf, false, function(err) {
-        if(err) throw err;
+        if(err) {
+          self.programming = false;
+          throw err;
+        }
         ++self.img_iBlocks;
         process.stdout.write("Downloaded " + self.img_iBlocks + "/" + self.img_nBlocks +" blocks\r");
         if(self.img_iBlocks === self.img_nBlocks) {
@@ -236,16 +236,9 @@ function FwUpdate_CC26xx(argv) {
           self.imgBlockChar.notify(false, function(err) {
             self.imgIdentifyChar.notify(false, function(err) {
               console.log('done');
-
             });
           });
         }
-        // write_block_timeout = setTimeout(function() {
-        //   --img_iBlocks;
-        //   console.log('\nwrite timeout, retrying');
-        //   blockNotify(data, true);
-        // }, GATT_WRITE_TIMEOUT);
-        //console.log('sent block');
       });
     }
   }
