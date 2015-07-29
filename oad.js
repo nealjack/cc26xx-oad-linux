@@ -25,244 +25,249 @@ var CONNECTION_PARAMS_SERVICE = 'f000ccc004514000b000000000000000';
 var CONN_PARAMS_CHAR = 'f000ccc104514000b000000000000000';
 var CONN_PARAMS_REQ_CHAR = 'f000ccc204514000b000000000000000';
 
+var SCAN_TIMEOUT = 10000; // 10 seconds
 
-var img = null;
-var imgHdr = null;
-var img_nblocks = null;
-var img_iblocks = 0;
-
-// ble connection variables
-var target_uuid = null;
-var scan_timeout = null;
-var scan_timeout_time = 10000; // 10 seconds
-var target_device = null;
-var programming = true;
 //var discovered = new Array();
+var fwUpdate = FwUpdate_CC26xx(argv);
 
-// Input args
-if(argv.h)
-{
-  print_help();
-}
-if(!argv.b || !argv.f)
-{
-  console.log('invalid command line options');
-  print_help();
-}
-else if(argv.b)
-{
-  target_uuid = argv.b.match(/[0-9a-fA-F][^:]/g).join('').toLowerCase();
-  if(target_uuid.length != 12)
+function FwUpdate_CC26xx(argv) {
+  var self = this;
+  this.targetUuid = null;
+  this.targetDevice = null;
+  this.fileBuffer = null;
+  this.imgHdr = null;
+  this.scanTimer = null;
+
+  this.img_nBlocks = null;
+  this.img_iBlocks = 0;
+  this.programming = true;
+  this.imgIdentifyChar = null;
+  this.imgBlockChar = null;
+
+  if(argv.h)
   {
-    console.log('invalid ble address');
     print_help();
   }
-  console.log(target_uuid);
-}
-
-fs.readFile(argv.f, init);
-
-function init(err, data){
-  if (err) throw err;
-  img = data;
-  img_nblocks = img.length / OAD_BLOCK_SIZE;
-  console.log(img_nblocks);
-  imgHdr = new ImgHdr(data);
-  noble.on('discover', discover_device);
-  noble.on('stateChange', function (state) {
-      console.log("Starting scan...");
-      if (state === 'poweredOn') {
-        noble.startScanning([], false);
-        scan_timeout = setTimeout(function(){
-          console.log('Scanning timed out, ensure peripheral is advertising.');
-          process.exit();
-        }, scan_timeout_time);
-      }
-      else {
-        noble.stopScanning();
-      }
-  });
-}
-
-function discover_device(peripheral)
-{
-  if(peripheral.uuid === target_uuid)
+  if(!argv.b || !argv.f)
   {
-    clearTimeout(scan_timeout);
-    noble.stopScanning();
-    target_device = peripheral;
-    console.log('found requested peripheral ' + target_uuid.match(/../g).join(':'))
-    target_device.connect(function(err) {
-      if(err) throw err;
-      console.log('connected to ' + target_uuid.match(/../g).join(':'));
-      //TODO reorg:
-      set_connection_params(function(){
-        print_firmware(function(){
-          oad_program();
-        });
-      });
+    console.log('invalid command line options');
+    print_help();
+  }
+  else if(argv.b)
+  {
+    this.targetUuid = argv.b.match(/[0-9a-fA-F][^:]/g).join('').toLowerCase();
+    if(this.targetUuid.length != 12)
+    {
+      console.log('invalid ble address');
+      print_help();
+    }
+    console.log(this.targetUuid);
+  }
+
+  fs.readFile(argv.f, function init(err, data) {
+    if (err) throw err;
+    self.fileBuffer = data;
+    img_nBlocks = self.fileBuffer.length / OAD_BLOCK_SIZE;
+    console.log(img_nBlocks);
+    self.imgHdr = new ImgHdr(data);
+    noble.on('discover', _discoverDevice);
+    noble.on('stateChange', function (state) {
+        console.log("Starting scan...");
+        if (state === 'poweredOn') {
+          noble.startScanning([], false);
+          self.scanTimer = setTimeout(function() {
+            console.log('Scanning timed out, ensure peripheral is advertising.');
+            process.exit();
+          }, SCAN_TIMEOUT);
+        }
+        else {
+          noble.stopScanning();
+        }
     });
-    target_device.on('disconnect', function() {
-      console.log('\ndisconnected');
-      process.exit(0);
+  });
+
+  function _discoverDevice(peripheral) {
+    console.log('discovered device: ' + peripheral.uuid.match(/../g).join(':'));
+    if(peripheral.uuid === self.targetUuid) {
+      clearTimeout(self.scanTimer);
+      noble.stopScanning();
+      self.targetDevice = peripheral;
+      console.log('found requested peripheral ' + self.targetUuid.match(/../g).join(':'))
+      self.targetDevice.connect(function(err) {
+        if(err) throw err;
+        console.log('connected to ' + self.targetUuid.match(/../g).join(':'));
+        _prepareDevice();
+      });
+      self.targetDevice.on('disconnect', function() {
+        console.log('\ndisconnected');
+        process.exit(0);
+      });
+    }
+  }
+
+  function test() {
+    console.log('blah');
+  }
+
+  function _prepareDevice() {
+    _setConnectionParams(function() {
+      _printFirmware(function() {
+        _oadProgram();
+      });
     });
   }
-}
 
-function print_firmware(callback){
-  var service_uuids = ['180a'];
-  var characteristic_uuids = ['2a26'];
-  target_device.discoverSomeServicesAndCharacteristics(service_uuids, characteristic_uuids,
-  function(err, services, characteristics){
+  function _printFirmware(callback) {
+    var service_uuids = ['180a'];
+    var characteristic_uuids = ['2a26'];
+    self.targetDevice.discoverSomeServicesAndCharacteristics(service_uuids, characteristic_uuids,
+    function(err, services, characteristics) {
 
-    chars_servs_exist(err, services, characteristics);
+      chars_servs_exist(err, services, characteristics);
 
-    char = characteristics[0];
-    char.read(function(err, data){
-      if(err) throw err;
-      console.log('Current device firmware is ' + data.toString('ascii'));
-      callback();
-    });
-  });
-}
-
-function set_connection_params(callback){
-  var service_uuids = [CONNECTION_PARAMS_SERVICE];
-  var characteristic_uuids = [CONN_PARAMS_CHAR, CONN_PARAMS_REQ_CHAR];
-  target_device.discoverSomeServicesAndCharacteristics(service_uuids, characteristic_uuids,
-  function(err, services, characteristics){
-
-    //TODO better check for existing characteristics/services
-    if(!characteristics[0]){
-      throw new Error('characteristic0 doesn\'t exist!');
-    }
-    else if(!characteristics[1]){
-      throw new Error('characteristic1 doesn\'t exist');
-    }
-
-    conn_params_char = characteristics[0];
-    conn_params_char.read(function(err, data){
-      console.log(data);
-    });
-    conn_params_char.notify(true, function(err){
-      conn_params_char.on('data', function(data, notification){
-        console.log('successfully wrote new connection parameters:');
-        console.log(data);
-        callback();
+      characteristics[0].read(function(err, data) {
+        if(err) throw err;
+        console.log('Current device firmware is ' + data.toString('ascii'));
+        if(callback) callback();
       });
     });
+  }
 
-    conn_params_req_char = characteristics[1];
-    var param_buf = new Buffer([binary.loUint16(OAD_CONN_INTERVAL), binary.hiUint16(OAD_CONN_INTERVAL),
-                                binary.loUint16(OAD_CONN_INTERVAL), binary.hiUint16(OAD_CONN_INTERVAL),
-                                0,0,
-                                binary.loUint16(OAD_SUPERVISION_TIMEOUT), binary.hiUint16(OAD_SUPERVISION_TIMEOUT)]);
-    console.log(param_buf);
-    conn_params_req_char.write(param_buf, false, function(err){
-      if(err) throw err;
-      console.log('attempted to write new connection parameters');
-    });
-  });
-}
+  function _setConnectionParams(callback) {
+    var service_uuids = [CONNECTION_PARAMS_SERVICE];
+    var characteristic_uuids = [CONN_PARAMS_CHAR, CONN_PARAMS_REQ_CHAR];
+    self.targetDevice.discoverSomeServicesAndCharacteristics(service_uuids, characteristic_uuids,
+    function(err, services, characteristics) {
 
-
-
-function oad_program(){
-  // OAD service
-  var service_uuids = [OAD_SERVICE];
-  // Img Identify, Img Block
-  var characteristic_uuids = [IMG_IDENTIFY_CHAR, IMG_BLOCK_CHAR];
-  target_device.discoverSomeServicesAndCharacteristics(service_uuids, characteristic_uuids,
-  function(err, services, characteristics){
-
-    chars_servs_exist(err, services, characteristics);
-    img_identify_char = characteristics[0];
-    img_block_char = characteristics[1];
-    console.log('ready to program device ' + target_uuid.match(/../g).join(':'));
-
-    prompt.start();
-    console.log('start? (y/n)');
-    prompt.get(['start'], function (err, result){
-      if(err) throw err;
-      if(result.start !== 'y'){
-        target_device.disconnect();
+      //TODO better check for existing characteristics/services
+      if(!characteristics[0]) {
+        throw new Error('characteristic0 doesn\'t exist!');
+      }
+      else if(!characteristics[1]) {
+        throw new Error('characteristic1 doesn\'t exist');
       }
 
-      console.log('programming device with ' + argv.f);
-
-      // noble enable notifications for characteristics
-      img_block_char.notify(true, function(err){
+      var conn_params_char = characteristics[0];
+      conn_params_char.read(function(err, data) {
         if(err) throw err;
-        img_block_char.on('data', block_notify);
-        img_identify_char.notify(true, function(err){
-          if(err) throw err;
-          img_identify_char.on('data', rejected_header);
-          img_identify_char.write(imgHdr.getRequest(), false);
+      });
+      conn_params_char.notify(true, function(err) {
+        conn_params_char.on('data', function(data, notification) {
+          console.log('successfully wrote new connection parameters:');
+          callback();
         });
       });
+
+      var conn_params_req_char = characteristics[1];
+      var param_buf = new Buffer([binary.loUint16(OAD_CONN_INTERVAL), binary.hiUint16(OAD_CONN_INTERVAL),
+                                  binary.loUint16(OAD_CONN_INTERVAL), binary.hiUint16(OAD_CONN_INTERVAL),
+                                  0,0,
+                                  binary.loUint16(OAD_SUPERVISION_TIMEOUT), binary.hiUint16(OAD_SUPERVISION_TIMEOUT)]);
+      conn_params_req_char.write(param_buf, false, function(err) {
+        if(err) throw err;
+        console.log('attempted to write new connection parameters');
+      });
     });
-  });
-}
-
-function block_notify(data, notification){
-  //console.log('got notification from block characteristic');
-  // if(notification) {
-  //   console.log(data);
-  // }
-  if(!programming){
-    console.log('this is bad');
-    return;
   }
-  //clearTimeout(write_block_timeout);
-  if(img_iblocks < img_nblocks){
-    programming = true;
-    //console.log('sending block ' + img_iblocks);
-    var block_buf = new Buffer(OAD_BUFFER_SIZE);
-    block_buf[0] = data[0];
-    block_buf[1] = data[1];
-    img.copy(block_buf, 2, img_iblocks * OAD_BLOCK_SIZE, (img_iblocks + 1) * OAD_BLOCK_SIZE);
-    //console.log('sending buffer:');
-    //console.log(block_buf);
-    img_block_char.write(block_buf, false, function(err){
-      if(err) throw err;
-      ++img_iblocks;
-      process.stdout.write("Downloaded " + img_iblocks + "/" + img_nblocks +" blocks\r");
-      if(img_iblocks === img_nblocks){
-        console.log('\nfinished programming');
-        console.log('trying to stop notifying img_block_char');
-        img_block_char.notify(false, function(err){
-          img_identify_char.notify(false, function(err){
-            console.log('done');
 
+  function _oadProgram() {
+    // OAD service
+    var service_uuids = [OAD_SERVICE];
+    // Img Identify, Img Block
+    var characteristic_uuids = [IMG_IDENTIFY_CHAR, IMG_BLOCK_CHAR];
+    self.targetDevice.discoverSomeServicesAndCharacteristics(service_uuids, characteristic_uuids,
+    function(err, services, characteristics) {
+
+      chars_servs_exist(err, services, characteristics);
+      self.imgIdentifyChar = characteristics[0];
+      self.imgBlockChar = characteristics[1];
+      console.log('ready to program device ' + self.targetDevice.uuid.match(/../g).join(':'));
+
+      prompt.start();
+      console.log('start? (y/n)');
+      prompt.get(['start'], function (err, result) {
+        if(err) throw err;
+        if(result.start !== 'y') {
+          self.targetDevice.disconnect();
+        }
+
+        console.log('programming device with ' + argv.f);
+
+        // noble enable notifications for characteristics
+        self.imgBlockChar.notify(true, function(err) {
+          if(err) throw err;
+          self.imgBlockChar.on('data', _blockNotify);
+          self.imgIdentifyChar.notify(true, function(err) {
+            if(err) throw err;
+            self.imgIdentifyChar.on('data', rejected_header);
+            self.imgIdentifyChar.write(self.imgHdr.getRequest(), false);
           });
         });
-      }
-      // write_block_timeout = setTimeout(function(){
-      //   --img_iblocks;
-      //   console.log('\nwrite timeout, retrying');
-      //   block_notify(data, true);
-      // }, GATT_WRITE_TIMEOUT);
-      //console.log('sent block');
+      });
     });
   }
+
+  function _blockNotify(data, notification) {
+    //console.log('got notification from block characteristic');
+    // if(notification) {
+    //   console.log(data);
+    // }
+    if(!self.programming) {
+      console.log('this is bad');
+      return;
+    }
+    //clearTimeout(write_block_timeout);
+    if(self.img_iBlocks < self.img_nBlocks) {
+      self.programming = true;
+      //console.log('sending block ' + img_iBlocks);
+      var block_buf = new Buffer(OAD_BUFFER_SIZE);
+      block_buf[0] = data[0];
+      block_buf[1] = data[1];
+      self.fileBuffer.copy(block_buf, 2, self.img_iBlocks * OAD_BLOCK_SIZE, (self.img_iBlocks + 1) * OAD_BLOCK_SIZE);
+      //console.log('sending buffer:');
+      //console.log(block_buf);
+      self.imgBlockChar.write(block_buf, false, function(err) {
+        if(err) throw err;
+        ++self.img_iBlocks;
+        process.stdout.write("Downloaded " + self.img_iBlocks + "/" + self.img_nBlocks +" blocks\r");
+        if(self.img_iBlocks === self.img_nBlocks) {
+          console.log('\nfinished programming');
+          console.log('trying to stop notifying self.imgBlockChar');
+          self.imgBlockChar.notify(false, function(err) {
+            self.imgIdentifyChar.notify(false, function(err) {
+              console.log('done');
+
+            });
+          });
+        }
+        // write_block_timeout = setTimeout(function() {
+        //   --img_iBlocks;
+        //   console.log('\nwrite timeout, retrying');
+        //   blockNotify(data, true);
+        // }, GATT_WRITE_TIMEOUT);
+        //console.log('sent block');
+      });
+    }
+  }
+
 }
 
-function rejected_header(data, notification){
+function rejected_header(data, notification) {
   //TODO better error checking
   console.log('got something from identify');
 }
 
-function chars_servs_exist(err, services, characteristics){
-  if(!services[0]){
+function chars_servs_exist(err, services, characteristics) {
+  if(!services[0]) {
     throw new Error('no services found');
   }
-  if(!characteristics[0]){
+  if(!characteristics[0]) {
     throw new Error('no characteristics found');
   }
   if(err) throw err;
 }
 
-function print_help(){
+function print_help() {
   console.log('\n-h displays this message');
   console.log('-b for device address in the form XX:XX:XX:XX:XX:XX');
   console.log('-f provides a required filename for firmware *.bin\n');
@@ -283,7 +288,7 @@ function print_help(){
 //   });
 //
 //   rli.question('Enter list index of discovered device: ', function(answer) {
-//     target_device = devices[answer];
+//     targetDevice = devices[answer];
 //     rli.close();
 //   });
 //
