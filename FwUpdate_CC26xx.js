@@ -80,26 +80,33 @@ function FwUpdate_CC26xx(argv) {
     img_nBlocks = self.fileBuffer.length / OAD_BLOCK_SIZE;
     self.imgHdr = new ImgHdr(data);
     noble.on('discover', _discoverDevice);
+    if(noble.state == 'poweredOn'){
+      _startScan();
+    }
     noble.on('stateChange', function (state) {
         console.log("Starting scan...");
         if (state === 'poweredOn') {
-          noble.startScanning([], false);
-          self.scanTimer = setTimeout(function() {
-            noble.stopScanning();
-            if(argv.b) {
-              console.log('Scanning timed out, ensure peripheral is advertising.');
-              process.exit();
-            }
-            else {
-              _pickDevice();
-            }
-          }, SCAN_TIMEOUT);
+          _startScan();
         }
         else {
           noble.stopScanning();
         }
     });
   });
+
+  function _startScan() {
+    noble.startScanning([], false);
+    self.scanTimer = setTimeout(function() {
+      noble.stopScanning();
+      if(argv.b) {
+        console.log('Scanning timed out, ensure peripheral is advertising.');
+        process.exit();
+      }
+      else {
+        _pickDevice();
+      }
+    }, SCAN_TIMEOUT);
+  }
 
   function _discoverDevice(peripheral) {
     console.log('discovered device: ' + peripheral.uuid.match(/../g).join(':'));
