@@ -11,7 +11,8 @@ var binary = require('./Binary');
 // Programming parameters
 var OAD_CONN_INTERVAL = 6; // 15 milliseconds
 var OAD_SUPERVISION_TIMEOUT = 50; // 500 milliseconds
-//var GATT_WRITE_TIMEOUT = 50; // Milliseconds
+var GATT_NOTIFY_TIMEOUT = 5000; // 5 seconds
+var GATT_WRITE_TIMEOUT = 500; // Milliseconds
 
 // OAD parameters
 var OAD_SERVICE = 'f000ffc004514000b000000000000000';
@@ -38,7 +39,7 @@ function FwUpdate_CC26xx(argv) {
 
   this.scanList = [];
   this.scanTimer = null;
-  //this.writeBlockTimer = null;
+  this.writeTimer = null;
 
   this.img_nBlocks = null;
   this.img_iBlocks = 0;
@@ -153,9 +154,7 @@ function FwUpdate_CC26xx(argv) {
     var characteristic_uuids = ['2a26'];
     self.targetDevice.discoverSomeServicesAndCharacteristics(service_uuids, characteristic_uuids,
     function(err, services, characteristics) {
-
       chars_servs_exist(err, services, characteristics);
-
       characteristics[0].read(function(err, data) {
         if(err) throw err;
         console.log('Current device firmware is ' + data.toString('ascii'));
@@ -184,7 +183,8 @@ function FwUpdate_CC26xx(argv) {
       });
       conn_params_char.notify(true, function(err) {
         conn_params_char.on('data', function(data, notification) {
-          console.log('successfully wrote new connection parameters');
+          clearTimeout(self.writeTimer);
+          console.log('done!');
           callback();
         });
       });
@@ -196,6 +196,8 @@ function FwUpdate_CC26xx(argv) {
                                   binary.loUint16(OAD_SUPERVISION_TIMEOUT), binary.hiUint16(OAD_SUPERVISION_TIMEOUT)]);
       conn_params_req_char.write(param_buf, false, function(err) {
         if(err) throw err;
+        console.log('writing connection parameters');
+        self.writeTimer = setTimeout(_timedOut, GATT_NOTIFY_TIMEOUT);
       });
     });
   }
@@ -221,7 +223,6 @@ function FwUpdate_CC26xx(argv) {
           self.targetDevice.disconnect();
         }
 
-        console.log('programming device with ' + argv.f);
         self.progressBar = new ProgressBar('downloading [:bar] :percent :etas', {
           complete: '=',
           incomplete: ' ',
@@ -236,7 +237,11 @@ function FwUpdate_CC26xx(argv) {
           self.imgIdentifyChar.notify(true, function(err) {
             if(err) throw err;
             self.imgIdentifyChar.on('data', rejected_header);
-            self.imgIdentifyChar.write(self.imgHdr.getRequest(), false);
+            self.imgIdentifyChar.write(self.imgHdr.getRequest(), false, function(err){
+              if(err) throw err;
+              console.log('writing image header');
+              writeTimer = setTimeout(_timedOut, GATT_NOTIFY_TIMEOUT);
+            });
           });
         });
       });
@@ -244,18 +249,17 @@ function FwUpdate_CC26xx(argv) {
   }
 
   function _blockNotify(data, notification) {
-
-    // clearTimeout(writeBlockTimer);
-    // self.writeBlockTimer = setTimeout(function(){
-    //   console.log('timeout on writing block ' + self.img_iBlocks);
-    //   console.log('trying again!');
-    //   _blockNotify(data, notification);
-    // }, GATT_WRITE_TIMEOUT);
-
-    if(!self.programming) {
-      console.log('this is bad');
-      return;
+    if(img_iBlocks === 0) {
+      console.log('done!');
+      console.log('programming device with ' + argv.f);
     }
+
+    clearTimeout(self.writeTimer);
+    self.writeTimer = setTimeout(function(){
+      console.log('\ntimeout on writing block ' + self.img_iBlocks);
+      self.targetDevice.disconnect();
+    }, GATT_WRITE_TIMEOUT);
+
     if(self.img_iBlocks < self.img_nBlocks) {
       self.programming = true;
       var block_buf = new Buffer(OAD_BUFFER_SIZE);
@@ -277,12 +281,18 @@ function FwUpdate_CC26xx(argv) {
           console.log('\nfinished programming');
           self.imgBlockChar.notify(false, function(err) {
             self.imgIdentifyChar.notify(false, function(err) {
+              clearTimeout(self.writeTimer);
               console.log('done');
             });
           });
         }
       });
     }
+  }
+
+  function _timedOut(type) {
+    console.log('write timed out');
+    self.targetDevice.disconnect();
   }
 
 }
@@ -304,7 +314,7 @@ function chars_servs_exist(err, services, characteristics) {
 
 function print_help() {
   console.log('\n-h displays this message');
-  console.log('-b for device address in the form XX:XX:XX:XX:XX:XX');
+  console.log('-b provides device address in the form XX:XX:XX:XX:XX:XX');
   console.log('-f provides a required filename for firmware *.bin\n');
   process.exit();
 }
