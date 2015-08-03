@@ -49,29 +49,25 @@ function FwUpdate_CC26xx(argv) {
 
   this.progressBar = null;
 
-  if(argv.h)
-  {
+  if(argv.h) {
     print_help();
   }
-  if(!argv.f)
-  {
+  if(!argv.f) {
     console.log('invalid command line options');
     print_help();
   }
-  else if(argv.b)
-  {
+  else if(argv.b) {
     this.targetUuid = argv.b.match(/[0-9a-fA-F][^:]/g).join('').toLowerCase();
-    if(this.targetUuid.length != 12)
-    {
+    if(this.targetUuid.length != 12) {
       console.log('invalid ble address');
       print_help();
     }
   }
-  else
-  {
+  else {
     // argv.s
     console.log('will perform scan');
   }
+
 
 
   fs.readFile(argv.f, function init(err, data) {
@@ -221,35 +217,44 @@ function FwUpdate_CC26xx(argv) {
       self.imgIdentifyChar = characteristics[0];
       self.imgBlockChar = characteristics[1];
       console.log('ready to program device ' + self.targetDevice.uuid.match(/../g).join(':'));
-
-      prompt.start();
-      console.log('start? (y/n)');
-      prompt.get(['start'], function (err, result) {
-        if(err) throw err;
-        if(result.start !== 'y') {
-          self.targetDevice.disconnect();
-        }
-
-        self.progressBar = new ProgressBar('downloading [:bar] :percent :etas', {
-          complete: '=',
-          incomplete: ' ',
-          width: 20,
-          total: self.fileBuffer.length/OAD_BLOCK_SIZE
-        });
-
-        // noble enable notifications for characteristics
-        self.imgBlockChar.notify(true, function(err) {
+      if(!argv.y){
+        prompt.start();
+        console.log('start? (y/n)');
+        prompt.get(['start'], function (err, result) {
           if(err) throw err;
-          self.imgBlockChar.on('data', _blockNotify);
-          self.imgIdentifyChar.notify(true, function(err) {
-            if(err) throw err;
-            self.imgIdentifyChar.on('data', rejected_header);
-            self.imgIdentifyChar.write(self.imgHdr.getRequest(), false, function(err){
-              if(err) throw err;
-              console.log('writing image header');
-              writeTimer = setTimeout(_timedOut, GATT_NOTIFY_TIMEOUT);
-            });
-          });
+          if(result.start !== 'y') {
+            self.targetDevice.disconnect();
+          }
+
+          _sendImgHeader();
+
+        });
+      }
+      else {
+        _sendImgHeader();
+      }
+    });
+  }
+
+  function _sendImgHeader() {
+    self.progressBar = new ProgressBar('downloading [:bar] :percent :etas', {
+      complete: '=',
+      incomplete: ' ',
+      width: 20,
+      total: self.fileBuffer.length/OAD_BLOCK_SIZE
+    });
+
+    // noble enable notifications for characteristics
+    self.imgBlockChar.notify(true, function(err) {
+      if(err) throw err;
+      self.imgBlockChar.on('data', _blockNotify);
+      self.imgIdentifyChar.notify(true, function(err) {
+        if(err) throw err;
+        self.imgIdentifyChar.on('data', rejected_header);
+        self.imgIdentifyChar.write(self.imgHdr.getRequest(), false, function(err){
+          if(err) throw err;
+          console.log('writing image header');
+          writeTimer = setTimeout(_timedOut, GATT_NOTIFY_TIMEOUT);
         });
       });
     });
@@ -321,6 +326,7 @@ function chars_servs_exist(err, services, characteristics) {
 
 function print_help() {
   console.log('\n-h displays this message');
+  console.log('-y skips user prompt');
   console.log('-b provides device address in the form XX:XX:XX:XX:XX:XX');
   console.log('-f provides a required filename for firmware *.bin\n');
   process.exit();
