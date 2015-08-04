@@ -331,27 +331,8 @@ function chars_servs_exist(err, services, characteristics) {
 function print_help() {
   console.log('\n-h displays this message');
   console.log('-y skips user prompt');
+  console.log('-c on-chip firmware download');
   console.log('-b provides device address in the form XX:XX:XX:XX:XX:XX');
   console.log('-f provides a required filename for firmware *.bin\n');
   process.exit();
 }
-
-// function choose_device(devices)
-// {
-//   console.log("Discovered devices:");
-//   for(var i = 0; i < devices.length; ++i)
-//   {
-//     console.log(i + ' ' + devices[i].uuid + ' ' + devices[i].advertisement.localName);
-//   }
-//
-//   var rli = readline.createInterface({
-//     input: process.stdin,
-//     output:process.stdout
-//   });
-//
-//   rli.question('Enter list index of discovered device: ', function(answer) {
-//     targetDevice = devices[answer];
-//     rli.close();
-//   });
-//
-// }
