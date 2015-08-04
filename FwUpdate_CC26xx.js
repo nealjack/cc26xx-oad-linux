@@ -36,6 +36,7 @@ function FwUpdate_CC26xx(argv) {
   this.targetDevice = null;
   this.fileBuffer = null;
   this.imgHdr = null;
+  this.onChip = false;
 
   this.scanList = [];
   this.scanTimer = null;
@@ -52,6 +53,9 @@ function FwUpdate_CC26xx(argv) {
   if(argv.h) {
     print_help();
   }
+  if(argv.c) {
+    onChip = true;
+  }
   if(!argv.f) {
     console.log('invalid command line options');
     print_help();
@@ -64,7 +68,7 @@ function FwUpdate_CC26xx(argv) {
     }
   }
   else {
-    // argv.s
+    // argv.b isn't there
     console.log('will perform scan');
   }
 
@@ -74,7 +78,7 @@ function FwUpdate_CC26xx(argv) {
     if (err) throw err;
     self.fileBuffer = data;
     img_nBlocks = self.fileBuffer.length / OAD_BLOCK_SIZE;
-    self.imgHdr = new ImgHdr(data);
+    self.imgHdr = new ImgHdr(data, self.onChip);
     noble.on('discover', _discoverDevice);
     if(noble.state == 'poweredOn'){
       _startScan();

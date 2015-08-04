@@ -3,18 +3,28 @@ var binary = require('./Binary');
 var CRC_POLY = 0x1021;
 var HAL_FLASH_WORD_SIZE = 4;
 
-function ImgHdr(buf) {
-  this.len = buf.length / HAL_FLASH_WORD_SIZE;
-  this.ver = 0;
-  this.uid = new Buffer('EEEE', 'utf-8');
-  this.addr = 0;
-  this.imgType = 1; //EFL_OAD_IMG_TYPE_APP
-  this.crc0 = this.calcImageCRC(0, buf);
-  this.crc1 = 0xFFFF;
+function ImgHdr(buf, onChip) {
+  this.onChip = onChip;
+  this.buf = buf;
+  if(!onChip){
+    this.len = buf.length / HAL_FLASH_WORD_SIZE;
+    this.ver = 0;
+    this.uid = new Buffer('EEEE', 'utf-8');
+    this.addr = 0;
+    this.imgType = 1; //EFL_OAD_IMG_TYPE_APP
+    this.crc0 = this.calcImageCRC(0, buf);
+    this.crc1 = 0xFFFF;
+  }
 }
 
 ImgHdr.prototype.getRequest = function() {
   var tmp = new Buffer(16);
+  
+  if(this.onChip) {
+    this.buf.copy(tmp);
+    return tmp;
+  }
+
   tmp[0] = binary.loUint16(this.crc0);
   tmp[1] = binary.hiUint16(this.crc0);
   tmp[2] = binary.loUint16(this.crc1);
