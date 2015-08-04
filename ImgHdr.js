@@ -18,13 +18,14 @@ function ImgHdr(buf, onChip) {
 }
 
 ImgHdr.prototype.getRequest = function() {
-  var tmp = new Buffer(16);
-  
+  var tmp = new Buffer(12);
+
   if(this.onChip) {
-    this.buf.copy(tmp);
+    this.buf.copy(tmp, 0, 4, 16);
     return tmp;
   }
 
+  tmp = new Buffer(16);
   tmp[0] = binary.loUint16(this.crc0);
   tmp[1] = binary.hiUint16(this.crc0);
   tmp[2] = binary.loUint16(this.crc1);
