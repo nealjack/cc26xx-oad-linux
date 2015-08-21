@@ -47,3 +47,7 @@ npm install noble minimist prompt progress
 `-b XX:XX:XX:XX:XX:XX` allows providing a BLE address. If not provided, the utility will perform a scan and allow the user to pick from a list of discovered devices.
 
 `-f <filename>` provides the firmware file location
+
+#### Firmware .bin files
+
+Users must provide their own firmware. Versions of the SensorTag firmware are available from TI's website.
