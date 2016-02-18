@@ -1,0 +1,26 @@
+{
+  "name": "cc26xx-oad-linux",
+  "version": "1.0.0",
+  "description": "Tested on Ubuntu 14.04 LTS, Raspbian.",
+  "main": "FwUpdate_CC26xx.js",
+  "dependencies": {
+    "minimist": "^1.2.0",
+    "noble": "^1.3.0",
+    "progress": "^1.1.8",
+    "prompt": "^1.0.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nealjack/cc26xx-oad-linux.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/nealjack/cc26xx-oad-linux/issues"
+  },
+  "homepage": "https://github.com/nealjack/cc26xx-oad-linux#readme"
+}
